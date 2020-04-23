@@ -3,13 +3,14 @@ use wasm_bindgen::JsCast;
 
 pub trait EventTargetExt {
     fn add_event_listener<E: Event>(&self, f: impl FnMut(E) + 'static) -> ListenerHandle;
+    fn add_event_listener_once<E: Event>(&self, f: impl FnOnce(E) + 'static);
 }
 
 impl EventTargetExt for web_sys::EventTarget {
     fn add_event_listener<E: Event>(&self, mut f: impl FnMut(E) + 'static) -> ListenerHandle {
-        let closure = Closure::wrap(Box::new(move |e| {
-            f(E::from_event(e));
-        }) as Box<dyn FnMut(web_sys::Event)>);
+        let closure = Closure::wrap(Box::new(
+            move |e| f(E::from_event(e))
+        ) as Box<dyn FnMut(web_sys::Event)>);
         self.add_event_listener_with_callback(E::NAME, closure.as_ref().unchecked_ref())
             .unwrap();
         ListenerHandle {
@@ -17,6 +18,14 @@ impl EventTargetExt for web_sys::EventTarget {
             name: E::NAME,
             closure: Some(closure),
         }
+    }
+
+    fn add_event_listener_once<E: Event>(&self, f: impl FnOnce(E) + 'static) {
+        self.add_event_listener_with_callback_and_add_event_listener_options(
+            E::NAME,
+            Closure::once_into_js(move |e| f(E::from_event(e))).as_ref().unchecked_ref(),
+            web_sys::AddEventListenerOptions::new().once(true)
+        ).unwrap();
     }
 }
 
