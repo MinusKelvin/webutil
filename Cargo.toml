@@ -1,0 +1,33 @@
+[package]
+name = "webutil"
+version = "0.1.0"
+authors = ["MinusKelvin <mark.carlson@minuskelvin.net>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+wasm-bindgen = { version = "0.2", features = ["serde-serialize"] }
+serde = "1.0"
+serde_json = "1.0"
+
+[dependencies.web-sys]
+version = "0.3"
+features = [
+    "EventTarget",
+    "Event",
+    "MessageEvent",
+    "FocusEvent",
+    "CloseEvent",
+    "PageTransitionEvent",
+    "PopStateEvent",
+    "KeyboardEvent",
+    "MouseEvent",
+    "WheelEvent",
+    "ClipboardEvent",
+    "UiEvent",
+    "Window",
+    "console",
+    "Worker",
+    "WorkerGlobalScope"
+]
