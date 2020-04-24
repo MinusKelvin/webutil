@@ -14,10 +14,10 @@ pub fn _web_worker_entry_point(scope: web_sys::DedicatedWorkerGlobalScope) {
         // Extract bundle for passing code+data to worker
         // invoker is a monomorphization of worker_setup that'll deserialize the data and prepare
         // incoming messages to be deserialized and given to the handler function
-        let (invoker, handler, data) = e.data().into_serde().unwrap();
-        let invoker: fn(web_sys::DedicatedWorkerGlobalScope, usize, String) =
+        let (invoker, init, handler, data) = e.data().into_serde().unwrap();
+        let invoker: fn(web_sys::DedicatedWorkerGlobalScope, usize, usize, String) =
             unsafe { std::mem::transmute::<usize, _>(invoker) };
-        invoker(scope, handler, data);
+        invoker(scope, init, handler, data);
     });
     scop.post_message(&JsValue::UNDEFINED).unwrap();
 }
@@ -48,16 +48,19 @@ impl<I, O> Worker<I, O> where
     I: Serialize + DeserializeOwned + 'static,
     O: Serialize + DeserializeOwned + 'static
 {
-    pub async fn new<T: Serialize + DeserializeOwned + 'static>(
-        handler: fn(&Sender<O>, &Rc<RefCell<T>>, I), args: &T
+    pub async fn new<T: Serialize + DeserializeOwned + 'static, R: 'static>(
+        init: fn(T) -> R,
+        handler: fn(&Sender<O>, &mut R, I), args: &T
     ) -> Result<Self, GeneralError> {
 
         // Create bundle for passing code+data to worker
         // 1. function to deserialize context, install listeners, and ser/de messages
-        // 2. user-provided function to handle incoming messages
-        // 3. context for message handling function
-        let msg: (usize, usize, String) = unsafe {(
-            std::mem::transmute::<fn(_, _, _), _>(worker_setup::<T, I, O>),
+        // 2. user-provided function to turn args into shared context
+        // 3. user-provided function to handle incoming messages
+        // 4. context for message handling function
+        let msg: (usize, usize, usize, String) = unsafe {(
+            std::mem::transmute::<fn(_, _, _, _), _>(worker_setup::<T, R, I, O>),
+            std::mem::transmute(init),
             std::mem::transmute(handler),
             serde_json::to_string(args)?
         )};
@@ -95,24 +98,26 @@ impl<I, O> Drop for Worker<I, O> {
     }
 }
 
-fn worker_setup<T, I, O>(
-    scope: web_sys::DedicatedWorkerGlobalScope, handler: usize, data: String
+fn worker_setup<T, R, I, O>(
+    scope: web_sys::DedicatedWorkerGlobalScope, init: usize, handler: usize, data: String
 ) where
     T: DeserializeOwned + 'static,
     I: DeserializeOwned + 'static,
-    O: Serialize + 'static
+    O: Serialize + 'static,
+    R: 'static
 {
-    let handler: fn(&Sender<O>, &Rc<RefCell<T>>, I) = unsafe {
+    let init: fn(T) -> R = unsafe { std::mem::transmute(init) };
+    let handler: fn(&Sender<O>, &mut R, I) = unsafe {
         std::mem::transmute(handler)
     };
     // deserialize context and wrap it in something the handler could reference in other places
     // such as in the message listeners for its own workers.
-    let data = Rc::new(RefCell::new(serde_json::from_str(&data).unwrap()));
+    let mut data = init(serde_json::from_str(&data).unwrap());
     let sender = Sender(scope.clone(), PhantomData);
 
     // install handler, which will live for as long as the worker lives
     scope.add_event_listener(move |e: event::Message| {
-        handler(&sender, &data, e.data().into_serde().unwrap());
+        handler(&sender, &mut data, e.data().into_serde().unwrap());
     }).forget();
 }
 
@@ -136,7 +141,7 @@ pub struct TaskWorker {
 
 impl TaskWorker {
     pub async fn new() -> Result<Self, GeneralError> {
-        let worker = Worker::new(|send, _, (invoker, code, data)| {
+        let worker = Worker::new(|_| (), |send, _, (invoker, code, data)| {
             let invoker: fn(&Sender<String>, usize, String) =
                 unsafe { std::mem::transmute(invoker) };
             invoker(send, code, data);

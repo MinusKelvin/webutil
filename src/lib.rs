@@ -37,5 +37,9 @@ impl From<wasm_bindgen::JsValue> for GeneralError {
 //         web_sys::console::log_1(&"2".into());
 //         global::later(200).await;
 //         web_sys::console::log_1(&"3".into());
+
+//         let worker = worker::TaskWorker::new().await.unwrap();
+//         let result = worker.run(|v| v*v, &5).await.unwrap();
+//         web_sys::console::log_1(&result.into());
 //     })
 // }
