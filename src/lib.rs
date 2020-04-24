@@ -25,14 +25,15 @@ impl From<wasm_bindgen::JsValue> for GeneralError {
     }
 }
 
+// use crate::prelude::*;
 // #[wasm_bindgen]
 // pub fn main() {
-//     worker::TaskWorker::new(|worker| {
-//         worker.run(|v| {
+//     wasm_bindgen_futures::spawn_local(async {
+//         let worker = worker::TaskWorker::new().await.unwrap();
+//         let result = worker.run(|v| {
 //             web_sys::console::log_1(&format!("worker has value {}", v).into());
 //             v * v
-//         }, &5, |result| {
-//             web_sys::console::log_1(&format!("main thread has result {}", result).into());
-//         }).unwrap()
-//     }).unwrap();
+//         }, &5).await.unwrap();
+//         web_sys::console::log_1(&format!("main thread has result {}", result).into());
+//     });
 // }

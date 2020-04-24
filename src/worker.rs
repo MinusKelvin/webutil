@@ -4,6 +4,9 @@ use serde::{ Serialize, Deserialize, de::DeserializeOwned };
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::collections::VecDeque;
+use std::future::Future;
+use std::task::{ Context, Poll, Waker };
+use std::pin::Pin;
 
 #[wasm_bindgen]
 pub fn _web_worker_entry_point(scope: web_sys::DedicatedWorkerGlobalScope) {
@@ -61,26 +64,37 @@ pub struct TaskWorker {
     worker: web_sys::Worker,
     incoming: Rc<event::ListenerHandle>,
     futures: Rc<RefCell<VecDeque<(Box<dyn FnOnce(event::Message)>, Rc<event::ListenerHandle>)>>>
-
 }
 
 impl TaskWorker {
-    pub fn new(later: impl FnOnce(TaskWorker) + 'static) -> Result<(), GeneralError> {
-        let worker = web_sys::Worker::new("worker.js")?;
-        let wrker = worker.clone();
-        wrker.add_event_listener_once(move |_: event::Message| {
-            worker.post_message(&JsValue::from_serde(&WorkerKind::Tasks).unwrap()).unwrap();
-            let futures = Rc::new(RefCell::new(VecDeque::new()));
-            let fut = futures.clone();
-            later(TaskWorker {
-                futures,
-                incoming: Rc::new(worker.add_event_listener(
-                    move |e| fut.borrow_mut().pop_front().unwrap().0(e)
-                )),
-                worker,
-            })
-        });
-        Ok(())
+    pub async fn new() -> Result<TaskWorker, GeneralError> {
+        TaskFuture::new(|waker, result| {
+            let worker = match web_sys::Worker::new("worker.js") {
+                Ok(v) => v,
+                Err(e) => {
+                    result.borrow_mut().replace(Err(e.into()));
+                    waker.wake();
+                    return;
+                }
+            };
+            let wrker = worker.clone();
+            wrker.add_event_listener_once(move |_: event::Message| {
+                let outcome = (|| {
+                    worker.post_message(&JsValue::from_serde(&WorkerKind::Tasks)?)?;
+                    let futures = Rc::new(RefCell::new(VecDeque::new()));
+                    let fut = futures.clone();
+                    Ok(TaskWorker {
+                        futures,
+                        incoming: Rc::new(worker.add_event_listener(
+                            move |e| fut.borrow_mut().pop_front().unwrap().0(e)
+                        )),
+                        worker,
+                    })
+                })();
+                result.borrow_mut().replace(outcome);
+                waker.wake();
+            });
+        }).await
     }
 
     /// Run a function in the web worker with the specified arguments.
@@ -88,8 +102,8 @@ impl TaskWorker {
     /// Unfortunately, wasm does not support shared memory right now, so we can't
     /// send closures to the web worker. The best alternative I could come up with
     /// is to serialize the required data and deserialize it in the web worker.
-    pub fn run<T, R>(&self, code: fn(T) -> R, args: &T, done: impl FnOnce(R) + 'static)
-        -> Result<(), GeneralError>
+    pub async fn run<T, R>(&self, code: fn(T) -> R, args: &T)
+        -> Result<R, GeneralError>
     where
         T: Serialize + DeserializeOwned,
         R: Serialize + DeserializeOwned + 'static
@@ -101,28 +115,69 @@ impl TaskWorker {
             std::mem::transmute::<fn(T) -> R, usize>(code),
             serde_json::to_string(args)?
         ) };
+        let js_msg = JsValue::from_serde(&msg)?;
 
-        self.futures.borrow_mut().push_back((Box::new(move |e| {
-            done(e.data().into_serde::<R>().unwrap())
-        }), self.incoming.clone()));
+        let futures = self.futures.clone();
 
-        self.worker.post_message(&JsValue::from_serde(&msg)?).map_err(Into::into)
+        TaskFuture::new(|waker, result| {
+            if let Err(e) = self.worker.post_message(&js_msg) {
+                result.borrow_mut().replace(Err(e.into()));
+                waker.wake();
+                return;
+            }
+
+            futures.borrow_mut().push_back((Box::new(move |e| {
+                result.borrow_mut().replace(
+                    e.data().into_serde::<R>().map_err(Into::into)
+                );
+                waker.wake();
+            }), self.incoming.clone()));
+        }).await
     }
 
-    /// Run a serializeable closure in the web worker.
-    /// 
-    /// You can probably use `serde_closure` to get one of these.
-    pub fn run_closure<R: Serialize + DeserializeOwned + 'static>(
-        &self,
-        code: impl FnOnce() -> R + Serialize + DeserializeOwned,
-        done: impl FnOnce(R) + 'static
-    ) -> Result<(), GeneralError> {
-        self.run(|f| f(), &code, done)
-    }
+    // /// Run a serializeable closure in the web worker.
+    // /// 
+    // /// You can probably use `serde_closure` to get one of these.
+    // pub fn run_closure<R: Serialize + DeserializeOwned + 'static>(
+    //     &self,
+    //     code: impl FnOnce() -> R + Serialize + DeserializeOwned,
+    //     done: impl FnOnce(R) + 'static
+    // ) -> Result<(), GeneralError> {
+    //     self.run(|f| f(), &code, done)
+    // }
 }
 
 #[derive(Serialize, Deserialize)]
 enum WorkerKind {
     Tasks,
     Dedicated(usize)
+}
+
+struct TaskFuture<F: FnOnce(Waker, Rc<RefCell<Option<R>>>), R> {
+    result: Rc<RefCell<Option<R>>>,
+    task: RefCell<Option<F>>
+}
+
+impl<F: FnOnce(Waker, Rc<RefCell<Option<R>>>), R> TaskFuture<F, R> {
+    pub fn new(f: F) -> Self {
+        TaskFuture {
+            result: Rc::new(RefCell::new(None)),
+            task: RefCell::new(Some(f))
+        }
+    }
+}
+
+impl<F: FnOnce(Waker, Rc<RefCell<Option<R>>>), R> Future for TaskFuture<F, R> {
+    type Output = R;
+    fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<R> {
+        match self.result.borrow_mut().take() {
+            Some(v) => Poll::Ready(v),
+            None => {
+                if let Some(f) = self.task.borrow_mut().take() {
+                    f(cx.waker().clone(), self.result.clone())
+                }
+                Poll::Pending
+            }
+        }
+    }
 }
