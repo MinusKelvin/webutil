@@ -1,5 +1,6 @@
 pub mod event;
 pub mod worker;
+pub mod task;
 
 pub mod prelude {
     pub use wasm_bindgen::prelude::*;
@@ -30,10 +31,14 @@ impl From<wasm_bindgen::JsValue> for GeneralError {
 // pub fn main() {
 //     wasm_bindgen_futures::spawn_local(async {
 //         let worker = worker::TaskWorker::new().await.unwrap();
-//         let result = worker.run(|v| {
-//             web_sys::console::log_1(&format!("worker has value {}", v).into());
-//             v * v
-//         }, &5).await.unwrap();
-//         web_sys::console::log_1(&format!("main thread has result {}", result).into());
+//         let w1 = worker.run(|v| v, &4).await.unwrap();
+//         let w2 = worker.run(|v| v * v, &5).await.unwrap();
+//         let w3 = worker.run(|v| v * v * v, &8).await.unwrap();
+//         web_sys::console::log_3(&w1.into(), &w2.into(), &w3.into());
+//     });
+
+//     wasm_bindgen_futures::spawn_local(async {
+//         let r = task::Task::new(|c| c.consume(5)).await;
+//         web_sys::console::log_1(&r.into());
 //     });
 // }
