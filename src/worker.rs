@@ -12,15 +12,20 @@ pub fn _web_worker_entry_point(scope: web_sys::DedicatedWorkerGlobalScope) {
     let scop = scope.clone();
     scop.add_event_listener_once(move |e: event::Message| {
         // Extract bundle for passing code+data to worker
-        let (invoker, fun, data) = e.data().into_serde().unwrap();
+        // invoker is a monomorphization of worker_setup that'll deserialize the data and prepare
+        // incoming messages to be deserialized and given to the handler function
+        let (invoker, handler, data) = e.data().into_serde().unwrap();
         let invoker: fn(web_sys::DedicatedWorkerGlobalScope, usize, String) =
             unsafe { std::mem::transmute::<usize, _>(invoker) };
-        invoker(scope, fun, data);
+        invoker(scope, handler, data);
     });
     scop.post_message(&JsValue::UNDEFINED).unwrap();
 }
 
 /// Wrapper for dedicated web workers.
+/// 
+/// Dropping the worker immediately terminates the associated web worker, preventing
+/// and messages it may have yet to process from being received.
 /// 
 /// This interfaces requires that you build using `--target no-modules` and that
 /// a `worker.js` file exists with the following content:
@@ -84,6 +89,12 @@ impl<I, O> Worker<I, O> where
     }
 }
 
+impl<I, O> Drop for Worker<I, O> {
+    fn drop(&mut self) {
+        self.worker.terminate();
+    }
+}
+
 fn worker_setup<T, I, O>(
     scope: web_sys::DedicatedWorkerGlobalScope, handler: usize, data: String
 ) where
@@ -94,9 +105,12 @@ fn worker_setup<T, I, O>(
     let handler: fn(&Sender<O>, &Rc<RefCell<T>>, I) = unsafe {
         std::mem::transmute(handler)
     };
+    // deserialize context and wrap it in something the handler could reference in other places
+    // such as in the message listeners for its own workers.
     let data = Rc::new(RefCell::new(serde_json::from_str(&data).unwrap()));
     let sender = Sender(scope.clone(), PhantomData);
 
+    // install handler, which will live for as long as the worker lives
     scope.add_event_listener(move |e: event::Message| {
         handler(&sender, &data, e.data().into_serde().unwrap());
     }).forget();
@@ -116,8 +130,8 @@ impl<O: Serialize> Sender<O> {
 /// This interface has the same setup requirements as the `Worker` interface.
 pub struct TaskWorker {
     worker: Worker<(usize, usize, String), String>,
-    incoming: Rc<event::ListenerHandle>,
-    futures: Rc<RefCell<VecDeque<(Box<dyn FnOnce(String)>, Rc<event::ListenerHandle>)>>>
+    incoming: event::ListenerHandle,
+    futures: Rc<RefCell<VecDeque<Box<dyn FnOnce(String)>>>>
 }
 
 impl TaskWorker {
@@ -128,13 +142,13 @@ impl TaskWorker {
             invoker(send, code, data);
         }, &()).await?;
 
-        let futures: Rc<RefCell<VecDeque<(Box<dyn FnOnce(String)>, Rc<event::ListenerHandle>)>>> =
+        let futures: Rc<RefCell<VecDeque<Box<dyn FnOnce(String)>>>> =
             Rc::new(RefCell::new(VecDeque::new()));
 
         let fut = futures.clone();
-        let incoming = Rc::new(worker.add_listener(
-            move |e| fut.borrow_mut().pop_front().unwrap().0(e)
-        ));
+        let incoming = worker.add_listener(
+            move |e| fut.borrow_mut().pop_front().unwrap()(e)
+        );
 
         Ok(TaskWorker {
             worker, futures, incoming
@@ -160,13 +174,11 @@ impl TaskWorker {
             match self.worker.send(&msg) {
                 Ok(()) => {
                     // queue a function to deserialize the result of the task and give it to the
-                    // returned future. We also keep a reference to the message listener handle
-                    // because we still want to receive the result if the TaskWorker is dropped.
-                    self.futures.borrow_mut().push_back((
+                    // returned future.
+                    self.futures.borrow_mut().push_back(
                         Box::new(|msg| consumer.consume(
                             serde_json::from_str(&msg).map_err(Into::into)
-                        )),
-                        self.incoming.clone()
+                        )
                     ));
                 }
                 Err(e) => consumer.consume(Err(e))

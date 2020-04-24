@@ -1,4 +1,5 @@
 pub mod event;
+pub mod global;
 pub mod worker;
 pub mod task;
 
@@ -30,15 +31,11 @@ impl From<wasm_bindgen::JsValue> for GeneralError {
 // #[wasm_bindgen]
 // pub fn main() {
 //     wasm_bindgen_futures::spawn_local(async {
-//         let worker = worker::TaskWorker::new().await.unwrap();
-//         let w1 = worker.run(|v| v, &4).await.unwrap();
-//         let w2 = worker.run(|v| v * v, &5).await.unwrap();
-//         let w3 = worker.run(|v| v * v * v, &8).await.unwrap();
-//         web_sys::console::log_3(&w1.into(), &w2.into(), &w3.into());
-//     });
-
-//     wasm_bindgen_futures::spawn_local(async {
-//         let r = task::Task::new(|c| c.consume(5)).await;
-//         web_sys::console::log_1(&r.into());
-//     });
+//         global::later(500).await;
+//         web_sys::console::log_1(&"1".into());
+//         global::later(1000).await;
+//         web_sys::console::log_1(&"2".into());
+//         global::later(200).await;
+//         web_sys::console::log_1(&"3".into());
+//     })
 // }
