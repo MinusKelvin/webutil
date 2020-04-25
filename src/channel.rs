@@ -10,7 +10,7 @@ pub struct Sender<T>(Rc<RefCell<ChannelState<T>>>);
 pub struct Receiver<T>(Rc<RefCell<ChannelState<T>>>);
 
 struct ChannelState<T> {
-    recv_exists: bool,
+    recvs: u32,
     waker: Option<Waker>,
     senders: u32,
     queue: VecDeque<T>
@@ -19,7 +19,7 @@ struct ChannelState<T> {
 impl<T> Sender<T> {
     pub fn send(&self, v: T) -> Result<(), T> {
         let mut state = self.0.borrow_mut();
-        if state.recv_exists {
+        if state.recvs > 0 {
             state.queue.push_back(v);
             if let Some(waker) = state.waker.take() {
                 waker.wake()
@@ -85,13 +85,20 @@ impl<T> Receiver<T> {
 
 impl<T> Drop for Receiver<T> {
     fn drop(&mut self) {
-        self.0.borrow_mut().recv_exists = false;
+        self.0.borrow_mut().recvs -= 1;
+    }
+}
+
+impl<T> Clone for Receiver<T> {
+    fn clone(&self) -> Self {
+        self.0.borrow_mut().recvs += 1;
+        Receiver(self.0.clone())
     }
 }
 
 pub fn channel<T>() -> (Sender<T>, Receiver<T>) {
     let state = Rc::new(RefCell::new(ChannelState {
-        recv_exists: true,
+        recvs: 1,
         senders: 1,
         waker: None,
         queue: VecDeque::new()
