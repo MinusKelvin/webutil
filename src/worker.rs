@@ -21,13 +21,13 @@ use std::marker::PhantomData;
 /// }
 /// run();
 /// ```
-pub struct Worker<I, O> {
+pub struct Worker<O, I> {
     worker: web_sys::Worker,
     incoming: Receiver<I>,
     _phantom: PhantomData<fn(O)>
 }
 
-impl<I, O> Worker<I, O>
+impl<I, O> Worker<O, I>
 where
     I: Serialize + DeserializeOwned + 'static,
     O: Serialize + DeserializeOwned + 'static
