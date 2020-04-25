@@ -1,7 +1,7 @@
 pub mod event;
 pub mod global;
 pub mod channel;
-// pub mod worker;
+pub mod worker;
 
 pub mod prelude {
     pub use wasm_bindgen::prelude::*;
@@ -35,19 +35,27 @@ impl From<wasm_bindgen::JsValue> for GeneralError {
     }
 }
 
-use crate::prelude::*;
-#[wasm_bindgen]
-pub fn main() {
-    spawn_local(async {
-        let r = web_sys::window().unwrap().on::<event::KeyDown>();
-        loop {
-            let e = r.next().await;
-            web_sys::console::log_1(&e);
-        }
-    });
+// use crate::prelude::*;
+// #[wasm_bindgen]
+// pub fn main() {
+//     spawn_local(async {
+//         let worker = worker::Worker::new(|count, incoming, outgoing| spawn_local(async move {
+//             while let Some(v) = incoming.recv().await {
+//                 let mut result = 1;
+//                 for _ in 0..count {
+//                     result *= v;
+//                 }
+//                 outgoing.send(&result);
+//             }
+//         }), &3).await.unwrap();
 
-    spawn_local(async {
-        let e = web_sys::window().unwrap().once::<event::Click>().await;
-        web_sys::console::log_1(&e);
-    });
-}
+//         let mut i = 0;
+//         let interval = global::interval(1000);
+//         loop {
+//             worker.send(&i).unwrap();
+//             i += 1;
+//             web_sys::console::log_1(&worker.recv().await.into());
+//             interval.next().await;
+//         }
+//     })
+// }

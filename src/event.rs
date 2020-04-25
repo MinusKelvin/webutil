@@ -1,10 +1,8 @@
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
 use std::future::Future;
-use std::task::{ Poll, Context, Waker };
+use std::task::{ Poll, Context };
 use std::pin::Pin;
-use std::rc::Rc;
-use std::cell::RefCell;
 use crate::channel::{ Receiver, channel, Once, oneshot };
 
 pub trait EventTargetExt {
