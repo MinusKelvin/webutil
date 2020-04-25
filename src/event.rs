@@ -1,9 +1,17 @@
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
+use std::future::Future;
+use std::task::{ Poll, Context, Waker };
+use std::pin::Pin;
+use std::rc::Rc;
+use std::cell::RefCell;
+use crate::channel::{ Receiver, channel, Once, oneshot };
 
 pub trait EventTargetExt {
     fn add_event_listener<E: Event>(&self, f: impl FnMut(E) + 'static) -> ListenerHandle;
-    fn add_event_listener_once<E: Event>(&self, f: impl FnOnce(E) + 'static);
+    fn add_event_listener_once<E: Event>(&self, f: impl FnOnce(E) + 'static) -> ListenerHandle;
+    fn on<E: Event>(&self) -> EventStream<E>;
+    fn once<E: Event>(&self) -> EventOnce<E>;
 }
 
 impl EventTargetExt for web_sys::EventTarget {
@@ -20,12 +28,30 @@ impl EventTargetExt for web_sys::EventTarget {
         }
     }
 
-    fn add_event_listener_once<E: Event>(&self, f: impl FnOnce(E) + 'static) {
+    fn add_event_listener_once<E: Event>(&self, f: impl FnOnce(E) + 'static) -> ListenerHandle {
+        let closure = Closure::once(move |e| f(E::from_event(e)));
         self.add_event_listener_with_callback_and_add_event_listener_options(
             E::NAME,
-            Closure::once_into_js(move |e| f(E::from_event(e))).as_ref().unchecked_ref(),
+            closure.as_ref().unchecked_ref(),
             web_sys::AddEventListenerOptions::new().once(true)
         ).unwrap();
+        ListenerHandle {
+            target: self.clone(),
+            name: E::NAME,
+            closure: Some(closure)
+        }
+    }
+
+    fn on<E: Event>(&self) -> EventStream<E> {
+        let (s, r) = channel();
+        let handle = self.add_event_listener(move |e| s.send(e).ok().unwrap());
+        EventStream(r, handle)
+    }
+
+    fn once<E: Event>(&self) -> EventOnce<E> {
+        let (s, r) = oneshot();
+        let handle = self.add_event_listener_once(move |e| s.resolve(e).ok().unwrap());
+        EventOnce(r, handle)
     }
 }
 
@@ -55,9 +81,37 @@ impl Drop for ListenerHandle {
     }
 }
 
-pub trait Event {
+pub trait Event: 'static {
     const NAME: &'static str;
     fn from_event(e: web_sys::Event) -> Self;
+}
+
+pub struct EventStream<E>(Receiver<E>, ListenerHandle);
+
+impl<E> EventStream<E> {
+    pub fn try_next(&self) -> Option<E> {
+        self.0.try_recv().ok()
+    }
+
+    pub async fn next(&self) -> E {
+        self.0.recv().await.unwrap()
+    }
+}
+
+pub struct EventOnce<E>(Once<E>, ListenerHandle);
+
+impl<E> EventOnce<E> {
+    pub fn try_next(&self) -> Option<E> {
+        self.0.try_recv().ok()
+    }
+}
+
+impl<E> Future for EventOnce<E> {
+    type Output = E;
+    fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<E> {
+        let inner = unsafe { self.map_unchecked_mut(|s| &mut s.0) };
+        inner.poll(ctx).map(Option::unwrap)
+    }
 }
 
 macro_rules! event {

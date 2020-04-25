@@ -1,5 +1,4 @@
 use crate::prelude::*;
-use crate::task::Task;
 use wasm_bindgen::closure::Closure;
 use std::mem::ManuallyDrop;
 
@@ -17,12 +16,6 @@ pub fn set_interval(period: u32, f: impl FnMut() + 'static) -> IntervalHandle {
         id,
         closure: ManuallyDrop::new(closure)
     }
-}
-
-pub async fn later(delay: u32) {
-    Task::new(|consumer| {
-        setTimeout(&Closure::once_into_js(move || consumer.consume(())), delay);
-    }).await
 }
 
 pub struct IntervalHandle {
