@@ -78,6 +78,10 @@ where
         })
     }
 
+    pub fn try_recv(&self) -> Option<I> {
+        self.incoming.try_recv().ok()
+    }
+
     pub async fn recv(&self) -> I {
         self.incoming.recv().await.unwrap()
     }
@@ -87,6 +91,12 @@ where
         let buf = js_sys::Uint8Array::from(&*data);
         self.worker.post_message_with_transfer(&buf, &js_sys::Array::of1(&buf.buffer()))?;
         Ok(())
+    }
+}
+
+impl<I, O> Drop for Worker<O, I> {
+    fn drop(&mut self) {
+        self.worker.terminate();
     }
 }
 
