@@ -173,11 +173,6 @@ event! {
     Resize           UiEvent "resize";
     Scroll           Event   "scroll";
 
-    // Clipboard events
-    Cut    ClipboardEvent "cut";
-    Copied ClipboardEvent "copy";
-    Paste  ClipboardEvent "paste";
-
     // Keyboard events
     KeyDown    KeyboardEvent "keydown";
     KeyUp      KeyboardEvent "keyup";
