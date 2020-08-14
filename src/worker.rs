@@ -34,9 +34,9 @@ where
 {
     /// Spawns a new worker and runs the specified function in it.
     pub async fn new<T: Serialize + DeserializeOwned + 'static>(
-        f: fn(T, Receiver<O>, WorkerSender<I>), args: &T
+        uri: &str, f: fn(T, Receiver<O>, WorkerSender<I>), args: &T
     ) -> Result<Self, GeneralError> {
-        let worker = web_sys::Worker::new("worker.js")?;
+        let worker = web_sys::Worker::new(uri)?;
         // wait for signal that web worker has spawned and is ready to receive messages
         worker.once::<event::Message>().await;
 
