@@ -135,6 +135,7 @@ macro_rules! event {
     };
 }
 
+// list: https://developer.mozilla.org/en-US/docs/Web/Events
 event! {
     // Resource events
     Error        Event "error";
@@ -195,13 +196,37 @@ event! {
     Select            Event      "select";
     Wheel             WheelEvent "onwheel";
 
-    // TODO Drag and Drop events
+    // Drag and Drop events
+    Drag      DragEvent "drag";
+    DragEnd   DragEvent "dragend";
+    DragEnter DragEvent "dragenter";
+    DragStart DragEvent "dragstart";
+    DragLeave DragEvent "dragleave";
+    DragOver  DragEvent "dragover";
+    DragDrop  DragEvent "drop";
+
     // TODO Media events
-    // TODO Progress events
-    // TODO Storage events
-    // TODO Update events
-    // TODO Value change events
-    // TODO Uncategorized events
+
+    // Progress events
+    ProgressAbort     ProgressEvent "abort";
+    ProgressLoad      ProgressEvent "load";
+    ProgressLoadEnd   ProgressEvent "loadend";
+    ProgressLoadStart ProgressEvent "loadstart";
+    Progress          ProgressEvent "progress";
+    ProgressTimeout   ProgressEvent "timeout";
+
+    // Storage events
+    Change  Event        "change";
+    Storage StorageEvent "storage";
+
+    // Value change events
+    HashChange       HashChangeEvent "hashchange";
+    Input            InputEvent      "input";
+    ReadyStateChange Event           "readystatechange";
+
+    // Uncategorized events
+    Invalid Event "invalid";
+
     // TODO Abortable Fetch events
     // TODO WebVR events
     // TODO SVG events
