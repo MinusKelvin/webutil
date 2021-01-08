@@ -42,5 +42,6 @@ features = [
     "console",
     "Worker",
     "DedicatedWorkerGlobalScope",
-    "AddEventListenerOptions"
+    "AddEventListenerOptions",
+    "OfflineAudioCompletionEvent"
 ]

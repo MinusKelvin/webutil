@@ -205,7 +205,26 @@ event! {
     DragOver  DragEvent "dragover";
     DragDrop  DragEvent "drop";
 
-    // TODO Media events
+    // Media events
+    CanPlay        Event                       "canplay";
+    CanPlayThrough Event                       "canplaythrough";
+    Complete       OfflineAudioCompletionEvent "complete";
+    DurationChange Event                       "durationchange";
+    Emptied        Event                       "emptied";
+    Ended          Event                       "ended";
+    LoadedData     Event                       "loadeddata";
+    LoadedMetaData Event                       "loadedmetadata";
+    Pause          Event                       "pause";
+    Play           Event                       "play";
+    Playing        Event                       "playing";
+    RateChange     Event                       "ratechange";
+    Seeked         Event                       "seeked";
+    Seeking        Event                       "seeking";
+    Stalled        Event                       "stalled";
+    Suspend        Event                       "suspend";
+    TimeUpdate     Event                       "timeupdate";
+    VolumeChange   Event                       "volumechange";
+    Waiting        Event                       "waiting";
 
     // Progress events
     ProgressAbort     ProgressEvent "abort";
