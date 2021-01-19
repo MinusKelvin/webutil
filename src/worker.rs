@@ -102,8 +102,6 @@ impl<I, O> Drop for Worker<O, I> {
 
 #[wasm_bindgen]
 pub fn _web_worker_entry_point(scope: web_sys::DedicatedWorkerGlobalScope) {
-    std::panic::set_hook(Box::new(console_error_panic_hook::hook));
-
     let scop = scope.clone();
     scope.add_event_listener_once(|e: event::Message| {
         // receive and run bootstrapper
